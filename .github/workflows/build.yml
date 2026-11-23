@@ -1,0 +1,49 @@
+name: build-vcam
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Theos
+        run: |
+          set -eux
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$HOME/theos"
+          mkdir -p "$HOME/theos/sdks"
+          curl -sL https://github.com/theos/sdks/archive/master.tar.gz -o /tmp/sdks.tgz
+          tar xzf /tmp/sdks.tgz -C /tmp
+          cp -r /tmp/sdks-master/*.sdk "$HOME/theos/sdks/" || true
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Fetch fishhook
+        run: |
+          mkdir -p ios/vendor
+          curl -sL -o ios/vendor/fishhook.h https://raw.githubusercontent.com/facebook/fishhook/main/fishhook.h
+          curl -sL -o ios/vendor/fishhook.c https://raw.githubusercontent.com/facebook/fishhook/main/fishhook.c
+          ls -l ios/vendor
+
+      - name: Build rootless deb
+        run: |
+          cd ios
+          make package THEOS_PACKAGE_SCHEME=rootless FINALPACKAGE=1
+
+      - name: Show products
+        run: |
+          ls -lh ios/packages || true
+          find ios/.theos -name '*.dylib' -exec ls -lh {} \; || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vcam-rootless
+          path: |
+            ios/packages/*.deb
+          if-no-files-found: error
